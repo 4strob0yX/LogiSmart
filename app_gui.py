@@ -227,7 +227,7 @@ HTML_SPA = """<!DOCTYPE html>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-base: #121212;
+            --bg-base: #f0f0f0;
             --bg-surface: #ffffff;
             --bg-subtle: #f4f4f5;
             --border: #e4e4e7;
@@ -235,7 +235,7 @@ HTML_SPA = """<!DOCTYPE html>
             --text-main: #09090b;
             --text-muted: #71717a;
             --text-sub: #a1a1aa;
-            --accent-success: #059669;
+            --accent-success: #059669;  
             --accent-warning: #d97706;
             --accent-danger: #dc2626;
         }
@@ -1447,4 +1447,4 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    uvicorn.run(app, host="127.0.0.1", port=puerto, log_level="info")
+    uvicorn.run("app_gui:app", host="127.0.0.1", port=puerto, reload=True, log_level="info")
