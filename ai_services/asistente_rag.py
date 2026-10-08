@@ -51,6 +51,37 @@ class AsistenteExplicativoRAG:
         registros_encontrados = []
         fuentes_citadas = []
 
+        # 2. Detección de consultas sobre catálogo completo o conteos de camiones
+        consulta_sobre_camiones_general = any(
+            w in consulta_lower for w in [
+                "camion", "camiones", "vehiculo", "vehiculos", "vehículo", "vehículos",
+                "flota", "catalogo", "catálogo", "cuantos", "cuántos", "cuantas", "cuántas",
+                "total", "cantidad", "cuenta", "contar", "registrados", "lista", "listar"
+            ]
+        )
+
+        if not placa_buscada and not camion_id_buscado and consulta_sobre_camiones_general:
+            todos_camiones = db_servicio.listar_camiones()
+            if todos_camiones:
+                registros_encontrados.append({
+                    "tipo": "Catálogo Maestro de Camiones",
+                    "doc": {
+                        "total_camiones_en_catalogo": len(todos_camiones),
+                        "camiones_registrados": [
+                            {
+                                "camion_id": c.get("camion_id") or c.get("_id"),
+                                "placa": c.get("placa"),
+                                "empresa": c.get("empresa"),
+                                "modelo": c.get("modelo"),
+                                "chofer": c.get("chofer"),
+                                "autorizado": c.get("autorizado", True)
+                            } for c in todos_camiones
+                        ]
+                    },
+                    "cita": f"Colección: camiones | Total de registros: {len(todos_camiones)}"
+                })
+                fuentes_citadas.append("Colección 'camiones'")
+
         if placa_buscada:
             cam = db_servicio.buscar_camion_por_placa(placa_buscada)
             if cam:
@@ -86,7 +117,7 @@ class AsistenteExplicativoRAG:
                 })
                 fuentes_citadas.append(f"Colección 'incidentes' (ID: {inc.get('_id')})")
 
-        # 2. Si no hubo coincidencia por placa/id, realizar búsqueda temática por palabras clave
+        # 3. Si no hubo coincidencia por placa/id/catálogo, realizar búsqueda temática por palabras clave
         if not registros_encontrados:
             palabras_clave = [p for p in re.findall(r'\b\w{4,}\b', consulta_lower) if p not in ['para', 'como', 'este', 'esta', 'sobre', 'cual', 'cuales', 'tiene', 'donde']]
 
@@ -141,6 +172,7 @@ class AsistenteExplicativoRAG:
         Condiciona la respuesta en MongoDB y las reglas del sistema ciberfísico.
         """
         contexto = self.buscar_contexto_en_mongodb(pregunta)
+        resumen_colecciones = db_servicio.obtener_resumen_colecciones()
 
         # Base de conocimiento normativo de reglas de garita
         reglas_base_conocimiento = (
@@ -152,7 +184,16 @@ class AsistenteExplicativoRAG:
             "- Modelo PEAS: Rendimiento (seguridad garita, latencia <500ms), Entorno (garita, báscula), Actuadores (barrera, semáforo), Sensores (RFID, celdas pesaje)."
         )
 
-        lineas_contexto = [reglas_base_conocimiento]
+        estadisticas_globales = (
+            f"ESTADÍSTICAS GLOBALES EN MONGODB (Métricas Totales Verificadas):\n"
+            f"- Colección 'camiones': {resumen_colecciones.get('camiones', 0)} vehículos registrados en el catálogo maestro.\n"
+            f"- Colección 'accesos': {resumen_colecciones.get('accesos', 0)} registros en la bitácora de control de acceso.\n"
+            f"- Colección 'incidentes': {resumen_colecciones.get('incidentes', 0)} incidentes reportados y clasificados.\n"
+            f"- Colección 'riesgos_eticos': {resumen_colecciones.get('riesgos_eticos', 0)} matrices de riesgo evaluadas.\n"
+            f"- Colección 'evaluaciones_llm': {resumen_colecciones.get('evaluaciones_llm', 0)} evaluaciones de inferencia.\n"
+        )
+
+        lineas_contexto = [reglas_base_conocimiento, estadisticas_globales]
         if contexto["hay_datos"]:
             lineas_contexto.append("\nREGISTROS RECUPERADOS DE MONGODB:")
             for reg in contexto["registros"]:
@@ -163,8 +204,8 @@ class AsistenteExplicativoRAG:
                         lineas_contexto.append(f"  {k}: {v}")
         else:
             lineas_contexto.append(
-                f"\nESTADO DE BÚSQUEDA EN BASE DE DATOS:\n"
-                f"No se encontraron registros específicos con el término '{contexto['termino_buscado']}' en MongoDB."
+                f"\nESTADO DE BÚSQUEDA ESPECÍFICA EN BASE DE DATOS:\n"
+                f"No se encontraron registros individuales específicos con el término '{contexto['termino_buscado']}' en MongoDB."
             )
 
         texto_contexto_db = "\n".join(lineas_contexto)
@@ -174,10 +215,11 @@ Eres el Auditor RAG del Centro de Control Ciberfísico LogiSmart, impulsado por 
 Tu misión es responder a la pregunta del operador basándote con rigor en los datos de MongoDB y las reglas del sistema.
 
 INSTRUCCIONES CLAVE:
-1. Si la pregunta es sobre un vehículo o reporte específico y existen registros recuperados, cita el ID o fuente de MongoDB.
-2. Si la pregunta es sobre un vehículo que NO existe en la base de datos, declara explícitamente que no se encuentra en MongoDB para evitar alucinaciones.
-3. Si la pregunta es sobre el funcionamiento general, las reglas lógicas (A, E, H, C), el modelo PEAS o los estados del semáforo, explica con claridad técnica fundamentada en las reglas del sistema.
-4. Responde en español de manera concisa, técnica y estructurada.
+1. Si la pregunta es cuantitativa (ej. cuántos camiones hay, cuántos incidentes o accesos hay), responde con la cifra exacta basada en las ESTADÍSTICAS GLOBALES DE MONGODB y cita la colección correspondiente.
+2. Si la pregunta es sobre el catálogo o lista de camiones, menciona los datos registrados en la colección 'camiones' (placas, empresas, etc.).
+3. Si la pregunta es sobre un vehículo específico que NO existe en la base de datos, declara explícitamente que no se encuentra en MongoDB para evitar alucinaciones.
+4. Si la pregunta es sobre el funcionamiento general, las reglas lógicas (A, E, H, C), el modelo PEAS o los estados del semáforo, explica con claridad técnica fundamentada en las reglas del sistema.
+5. Responde en español de manera concisa, técnica y estructurada.
 
 CONTEXTO VERIFICADO:
 {texto_contexto_db}
