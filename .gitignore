@@ -1,0 +1,16 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS artifacts
+.DS_Store
+
+# Markdown documentation excluded per user specification
+*.md
+
+# Practica 1/2 excluded
+parte1_tutor/
+
+# Exported runtime reports
+reportes_exportados/
